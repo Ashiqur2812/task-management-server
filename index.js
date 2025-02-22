@@ -1,24 +1,30 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
+const morgan = require("morgan");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: [
+            "http://localhost:5173",
+            "https://task-management-client-767h.vercel.app",
+            "https://task-management-server-wheat-gamma.vercel.app",
+        ],
+        methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
+        credentials: true,
+    },
+});
+
 const port = process.env.PORT || 4000;
-const morgan = require('morgan');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-const corsOption = {
-    // origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : '*',
-    // credentials: true,
-    // origin: ['http://localhost:5173', 'http://localhost:4000'],
-    origin: ['https://task-management-server-wheat-gamma.vercel.app','https://task-management-client-767h.vercel.app'],
-    methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    optionSuccessStatus: 200,
-};
-
-app.use(cors(corsOption));
+app.use(cors());
 app.use(express.json());
-app.use(morgan('dev'));
+app.use(morgan("dev"));
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.yt5iw.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -27,13 +33,22 @@ const client = new MongoClient(uri, {
         version: ServerApiVersion.v1,
         strict: true,
         deprecationErrors: true,
-    }
+    },
 });
 
 async function run() {
     try {
-        const taskCollection = client.db('taskManagerDB').collection('tasks');
-        const activityLogCollection = client.db('taskManagerDB').collection('activityLogs');
+        const taskCollection = client.db("taskManagerDB").collection("tasks");
+        const activityLogCollection = client.db("taskManagerDB").collection("activityLogs");
+
+        // WebSocket connection
+        io.on("connection", (socket) => {
+            console.log("A client connected");
+
+            socket.on("disconnect", () => {
+                console.log("A client disconnected");
+            });
+        });
 
         // ✅ Get all tasks grouped by category
         app.get("/tasks", async (req, res) => {
@@ -55,40 +70,33 @@ async function run() {
             try {
                 const { title, description, category, dueDate } = req.body;
 
-                // Validate title length
                 // Validate title
                 if (!title || title.trim() === "" || title.length > 50) {
                     return res.status(400).send({ error: "Title must be between 1-50 characters" });
                 }
 
-                // Validate description length
+                // Validate description
                 if (description && description.length > 200) {
                     return res.status(400).send({ error: "Description must be less than 200 characters" });
                 }
 
                 // Validate category
-                const validCategories = ["todo", "inProgress", "done"];
-                if (!category || !validCategories.includes(category)) {
-                    return res.status(400).send({ error: "Invalid category. Must be 'todo', 'inProgress', or 'done'." });
+                if (!["todo", "inProgress", "done"].includes(category)) {
+                    return res.status(400).send({ error: "Invalid category" });
                 }
 
-                // Validate dueDate (if provided)
-                if (dueDate && new Date(dueDate).toString() === "Invalid Date") {
-                    return res.status(400).send({ error: "Invalid due date format" });
-                }
-
+                // Validate dueDate
                 if (dueDate && new Date(dueDate) < new Date()) {
                     return res.status(400).send({ error: "Due date cannot be in the past" });
                 }
 
                 const newTask = {
                     title,
-                    description: description || "", // Ensure it's not undefined
+                    description: description || "",
                     category,
-                    dueDate: dueDate || null, // Ensure it's null if not provided
+                    dueDate: dueDate || null,
                     timestamp: new Date(),
                 };
-
 
                 const result = await taskCollection.insertOne(newTask);
 
@@ -98,6 +106,7 @@ async function run() {
                     timestamp: new Date(),
                 });
 
+                io.emit("task-updated");
                 res.status(201).json({ ...newTask, _id: result.insertedId });
             } catch (error) {
                 res.status(500).send({ error: "Failed to add task" });
@@ -115,11 +124,9 @@ async function run() {
                     return res.status(400).send({ error: "Invalid category" });
                 }
 
-                const updatedTask = { category };
-
                 const result = await taskCollection.updateOne(
                     { _id: new ObjectId(id) },
-                    { $set: updatedTask }
+                    { $set: { category } }
                 );
 
                 if (result.modifiedCount === 0) {
@@ -133,6 +140,7 @@ async function run() {
                     timestamp: new Date(),
                 });
 
+                io.emit("task-updated");
                 res.send({ message: "Task category updated successfully" });
             } catch (error) {
                 res.status(500).send({ error: "Failed to update task category" });
@@ -145,7 +153,7 @@ async function run() {
                 const id = req.params.id;
                 const { title, description, category, dueDate } = req.body;
 
-                // Validate title length
+                // Validate title
                 if (title && title.length > 50) {
                     return res.status(400).send({ error: "Title must be less than 50 characters" });
                 }
@@ -182,6 +190,7 @@ async function run() {
                     timestamp: new Date(),
                 });
 
+                io.emit("task-updated");
                 res.send({ message: "Task updated successfully" });
             } catch (error) {
                 res.status(500).send({ error: "Failed to update task" });
@@ -206,6 +215,7 @@ async function run() {
                     timestamp: new Date(),
                 });
 
+                io.emit("task-updated");
                 res.send({ message: "Task deleted successfully" });
             } catch (error) {
                 res.status(500).send({ error: "Failed to delete task" });
@@ -231,10 +241,10 @@ async function run() {
 }
 run().catch(console.dir);
 
-app.get('/', async (req, res) => {
-    res.send('Hello World...');
+app.get("/", async (req, res) => {
+    res.send("Hello World...");
 });
 
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`The server is running on port ${port}`);
 });
