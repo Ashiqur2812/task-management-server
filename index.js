@@ -9,21 +9,20 @@ const port = process.env.PORT || 4000;
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: [
-            "http://localhost:5173",
-            "https://task-management-client-767h.vercel.app",
-            "https://task-management-server-wheat-gamma.vercel.app",
-        ],
-        methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
-        credentials: true,
-    },
-});
 
+// ✅ Define CORS options 
+const corsOptions = {
+    origin: [
+        "http://localhost:5173",
+        "https://task-management-client-767h.vercel.app",
+        "https://task-management-server-wheat-gamma.vercel.app",
+    ],
+    methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
+    credentials: true,
+};
 
-
-app.use(cors());
+// ✅ Use CORS options
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(morgan("dev"));
 
