@@ -5,6 +5,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const morgan = require("morgan");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const port = process.env.PORT || 4000;
 
 const app = express();
 const server = http.createServer(app);
@@ -20,7 +21,7 @@ const io = new Server(server, {
     },
 });
 
-const port = process.env.PORT || 4000;
+
 
 app.use(cors());
 app.use(express.json());
@@ -232,8 +233,8 @@ async function run() {
             }
         });
 
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
